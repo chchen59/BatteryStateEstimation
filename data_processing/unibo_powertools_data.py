@@ -234,6 +234,11 @@ class UniboPowertoolsData():
         self.logger.debug(
             "Finish adding training and testing discharge SOH parameters.")
 
+        self.train_charge_cap = self.__add_charge_soh_pars(self.train_charge_cap)
+        self.test_charge_cap = self.__add_charge_soh_pars(self.test_charge_cap)
+        self.logger.debug(
+            "Finish adding training and testing charge SOH parameters.")
+
         self.logger.debug("Finish preparing data.")
         self.logger.info("Prepared training charge cycle data: %s, capacity data: %s" %
                          (self.train_charge_cyc.shape, self.train_charge_cap.shape))
@@ -322,6 +327,42 @@ class UniboPowertoolsData():
                                                        CapacityCols.TIME] - discharge_cyc[i][:, CycleCols.TIME]
 
         return discharge_cyc
+
+    def __add_charge_soh_pars(self, charge_cap):
+        new_charge_cap = np.c_[charge_cap,
+                              np.zeros((charge_cap.shape[0], 5))]
+
+        for cap in new_charge_cap:
+            # Time remaining to cell end: (Time of last row in the cell - current time)
+            cap[CapacityCols.REMAINING_TIME_TO_CELL_END] = new_charge_cap[new_charge_cap[:, CapacityCols.TEST_NAME] ==
+                                                                         cap[CapacityCols.TEST_NAME]][-1][CapacityCols.TIME] - cap[CapacityCols.TIME]
+
+            # Maximum capacity in corresponding charging cycles
+            same_test_charge_cap = charge_cap[charge_cap[:,
+                                                         CapacityCols.TEST_NAME] == cap[CapacityCols.TEST_NAME]]
+            cap[CapacityCols.MAXIMUM_CAPACITY] = np.max(
+                same_test_charge_cap[:, CapacityCols.CHARGING_CAPACITY])
+
+            # Nominal cell capacity
+            cell_cap = cap[CapacityCols.MAXIMUM_CAPACITY]
+            # Test name convention: 000-XW-Y.Y-AABB-T (7~10 chars are cell capacity)
+            cell_cap_text = cap[CapacityCols.TEST_NAME][7:10]
+            try:
+                cell_cap = float(cell_cap_text)
+            except Exception:
+                pass
+            cap[CapacityCols.NOMINAL_CAPACITY] = cell_cap
+
+        # SOH: (Last charging cycle capacity / nominal cell capacity)
+        new_charge_cap[:, CapacityCols.SOH] = charge_cap[:,
+                                                        CapacityCols.CHARGING_CAPACITY] / new_charge_cap[:, CapacityCols.MAXIMUM_CAPACITY]
+
+        # Corresponding charging cycle charging capacity
+        new_charge_cap[:, CapacityCols.CORRESPONDING_CHARGING_CAPACITY] = charge_cap[:,
+                                                                                    CapacityCols.CHARGING_CAPACITY]
+
+        return new_charge_cap
+
 
     def __add_discharge_soh_pars(self, discharge_cap, charge_cap):
         discharge_cap = np.c_[discharge_cap,

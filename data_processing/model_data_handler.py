@@ -7,10 +7,11 @@ from .unibo_powertools_data import CapacityCols, CycleCols
 
 
 class ModelDataHandler():
-    def __init__(self, dataset, x_indices, scaler_type=MinMaxScaler):
+    def __init__(self, dataset, x_cyc_indices, x_cap_indices = [], scaler_type=MinMaxScaler):
         self.logger = logging.getLogger()
         self.dataset = dataset
-        self.x_indices = x_indices
+        self.x_cyc_indices = x_cyc_indices
+        self.x_cap_indices = x_cap_indices
         self.scaler_type = scaler_type
 
         self.train_charge_cyc, self.train_charge_cap, self.test_charge_cyc, self.test_charge_cap = self.dataset.get_charge_data()
@@ -19,18 +20,28 @@ class ModelDataHandler():
         self.__assign_scalers()
 
     def __assign_scalers(self):
-        self.charge_scalers = self.__create_scalers(self.train_charge_cyc)
+        self.charge_scalers = self.__create_scalers(self.train_charge_cyc, self.train_charge_cap)
         self.discharge_scalers = self.__create_scalers(
-            self.train_discharge_cyc)
+            self.train_discharge_cyc,
+            self.train_discharge_cap)
 
-    def __create_scalers(self, cyc):
+    def __create_scalers(self, cyc, cap):
         scalers = []
-        for index in self.x_indices:
-            scalers.append(self.__create_scaler(cyc, index))
+        for index in self.x_cyc_indices:
+            scalers.append(self.__create_cyc_scaler(cyc, index))
+        for index in self.x_cap_indices:
+            scalers.append(self.__create_cap_scaler(cap, index))
         return scalers
 
-    def __create_scaler(self, cyc, col_index):
+    def __create_cyc_scaler(self, cyc, col_index):
         data = np.concatenate(cyc)[:, col_index].reshape(-1, 1)
+        scaler_x = self.scaler_type()
+        scaler_x.fit_transform(data)
+        return scaler_x
+
+    def __create_cap_scaler(self, cap, col_index):
+        #data = np.concatenate(cap)[:, col_index].reshape(-1, 1)
+        data = cap[:, col_index].astype(float).reshape(-1, 1)
         scaler_x = self.scaler_type()
         scaler_x.fit_transform(data)
         return scaler_x
@@ -50,10 +61,10 @@ class ModelDataHandler():
                 CapacityCols.REMAINING_TIME_TO_CELL_END
             ]
             train_raw_x, train_y = self.__get_whole_cycle_soh_x_y(
-                self.train_discharge_cyc, self.train_discharge_cap, self.x_indices, y_indices
+                self.train_discharge_cyc, self.train_discharge_cap, self.x_cyc_indices, y_indices
             )
             test_raw_x, test_y = self.__get_whole_cycle_soh_x_y(
-                self.test_discharge_cyc, self.test_discharge_cap, self.x_indices, y_indices
+                self.test_discharge_cyc, self.test_discharge_cap, self.x_cyc_indices, y_indices
             )
         else:
             y_indices = [
@@ -61,10 +72,18 @@ class ModelDataHandler():
                 CycleCols.REMAINING_TIME_TO_CYCLE_END
             ]
             train_raw_x, train_y = self.__get_whole_cycle_soc_x_y(
-                self.train_discharge_cyc, self.x_indices, y_indices
+                self.train_discharge_cyc,
+                self.train_discharge_cap,
+                self.x_cyc_indices,
+                self.x_cap_indices,
+                y_indices
             )
             test_raw_x, test_y = self.__get_whole_cycle_soc_x_y(
-                self.test_discharge_cyc, self.x_indices, y_indices
+                self.test_discharge_cyc,
+                self.test_discharge_cap,
+                self.x_cyc_indices,
+                self.x_cap_indices,
+                y_indices
             )
 
         train_scaled_x = self.__get_scaled_whole_cycle_x(
@@ -95,11 +114,24 @@ class ModelDataHandler():
         y = np.array(cap[:, y_indices], dtype='float32')
         return (x, y)
 
-    def __get_whole_cycle_soc_x_y(self, cyc, x_indices, y_indices):
+    def __get_whole_cycle_soc_x_y(self, cyc, cap, x_cyc_indices, x_cap_indices, y_indices):
+        x_full_list = []
+        x_cyc_list = list(map(lambda data: data[:, x_cyc_indices].astype('float32'), cyc)) 
+
+        if len(x_cap_indices) != 0:
+            x_cap_list = list(map(lambda data: data[x_cap_indices].astype('float32'), cap)) 
+            for row, val in zip(x_cyc_list, x_cap_list):
+                val_col = np.tile(val, (len(row),1))
+                now_row = np.concatenate((row, val_col), axis=1)
+                x_full_list.append(now_row)
+        else:
+            x_full_list = x_cyc_list
+ 
         x = np.array(
-            list(map(lambda data: data[:, x_indices].astype('float32'), cyc)), dtype=object
+            x_full_list, dtype=object
             #Modify by CHChen59, added dtype=object
         )
+
         y = np.array(
             list(map(lambda data: data[:, y_indices].astype('float32'), cyc)), dtype=object
             #Modify by CHChen59, added dtype=object
@@ -167,7 +199,7 @@ class ModelDataHandler():
 
     def __get_single_step_soc(self, cyc, y_indices):
         concatenated_cyc = np.concatenate(cyc)
-        x = concatenated_cyc[:, self.x_indices].astype('float32')
+        x = concatenated_cyc[:, self.x_cyc_indices].astype('float32')
         y = concatenated_cyc[:, y_indices].astype('float32')
         return (x, y)
 
@@ -177,7 +209,7 @@ class ModelDataHandler():
         for i in range(len(cyc)):
             current_cyc = cyc[i]
             current_cap = cap[i]
-            x.extend(current_cyc[:, self.x_indices])
+            x.extend(current_cyc[:, self.x_cyc_indices])
             y.extend(np.repeat([current_cap[y_indices]],
                      len(current_cyc), axis=0))
         x = np.array(x).astype('float32')
@@ -236,7 +268,7 @@ class ModelDataHandler():
 
     def __cycle_to_multiple_steps_soc(self, y_indices, steps, multiple_output, cycle, x_indices=None):
         if(x_indices is None):
-            x_indices = self.x_indices
+            x_indices = self.x_cyc_indices
         x, y = [], []
         for i in range(cycle.shape[0]):
             start_ix = i - steps + 1
@@ -270,11 +302,11 @@ class ModelDataHandler():
                 y_seq = cap[i, y_indices]
                 # start index is negative, pad zeros to the sequence
                 if(start_ix < 0):
-                    x_seq = np.zeros((abs(start_ix), len(self.x_indices)))
+                    x_seq = np.zeros((abs(start_ix), len(self.x_cyc_indices)))
                     x_seq = np.append(
-                        x_seq, cycle[0:j+1, self.x_indices], axis=0)
+                        x_seq, cycle[0:j+1, self.x_cyc_indices], axis=0)
                 else:
-                    x_seq = cycle[start_ix:j+1, self.x_indices]
+                    x_seq = cycle[start_ix:j+1, self.x_cyc_indices]
 
                 if(multiple_output):
                     y_seq = np.repeat([y_seq], steps, axis=0)
@@ -335,7 +367,7 @@ class ModelDataHandler():
 
     def __cycle_to_multiple_steps(self, y_indices, steps, multiple_output, cycle_x, cycle_y, x_indices=None):
         if(x_indices is None):
-            x_indices = self.x_indices
+            x_indices = self.x_cyc_indices
         x, y = [], []
         for i in range(cycle_x.shape[0]):
             start_ix = i - steps + 1
