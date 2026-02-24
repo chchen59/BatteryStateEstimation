@@ -49,6 +49,63 @@ class ModelDataHandler():
     def get_scalers(self):
         return self.charge_scalers, self.discharge_scalers
 
+    def get_charge_whole_cycle(self, output_capacity=False, multiple_output=False, soh=False):
+        """x: [ [[voltage, current, temperature], ...], ...] \n
+        SOH y (single step): [ [soh/last_charging_capacity, remaining_time_to_cell_end], ... ] \n
+        SOH y (multiple steps): [ [[soh/last_charging_capacity, remaining_time_to_cell_end], ...], ... ]\n
+        SOC y: [[[soc/charging_capacity, remaining_time_to_cycle_end], ...], ...]"""
+
+        if(soh):
+            y_indices = [
+                CapacityCols.CORRESPONDING_CHARGING_CAPACITY if output_capacity else CapacityCols.SOH,
+                CapacityCols.REMAINING_TIME_TO_CELL_END
+            ]
+            train_raw_x, train_y = self.__get_whole_cycle_soh_x_y(
+                self.train_charge_cyc, self.train_charge_cap, self.x_cyc_indices, y_indices
+            )
+            test_raw_x, test_y = self.__get_whole_cycle_soh_x_y(
+                self.test_charge_cyc, self.test_charge_cap, self.x_cyc_indices, y_indices
+            )
+        else:
+            y_indices = [
+                CycleCols.CHARGING_CAPACITY if output_capacity else CycleCols.SOC,
+                CycleCols.REMAINING_TIME_TO_CYCLE_END
+            ]
+            train_raw_x, train_y = self.__get_whole_cycle_soc_x_y(
+                self.train_charge_cyc,
+                self.train_charge_cap,
+                self.x_cyc_indices,
+                self.x_cap_indices,
+                y_indices
+            )
+            test_raw_x, test_y = self.__get_whole_cycle_soc_x_y(
+                self.test_charge_cyc,
+                self.test_charge_cap,
+                self.x_cyc_indices,
+                self.x_cap_indices,
+                y_indices
+            )
+
+        train_scaled_x = self.__get_scaled_whole_cycle_x(
+            train_raw_x, self.charge_scalers)
+        test_scaled_x = self.__get_scaled_whole_cycle_x(
+            test_raw_x, self.charge_scalers)
+
+        train_x, test_x = self.__get_padded_whole_cycle(
+            train_scaled_x, test_scaled_x)
+        if(not soh):
+            train_y, test_y = self.__get_padded_whole_cycle(train_y, test_y)
+
+        if(multiple_output and soh):
+            # (SOH only) duplicate the y values to multiple steps for each cycle
+            train_y = np.repeat(train_y[:, None, :], train_x.shape[1], axis=1)
+            test_y = np.repeat(test_y[:, None, :], test_x.shape[1], axis=1)
+
+        self.logger.info("Train x: %s, train y: %s | Test x: %s, test y: %s" %
+                         (train_x.shape, train_y.shape, test_x.shape, test_y.shape))
+
+        return (train_x, train_y, test_x, test_y)
+
     def get_discharge_whole_cycle(self, output_capacity=False, multiple_output=False, soh=False):
         """x: [ [[voltage, current, temperature], ...], ...] \n
         SOH y (single step): [ [soh/last_charging_capacity, remaining_time_to_cell_end], ... ] \n

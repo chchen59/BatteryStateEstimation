@@ -74,11 +74,16 @@ mdh = ModelDataHandler(dataset, [
     CycleCols.VOLTAGE,
     CycleCols.CURRENT,
     CycleCols.TEMPERATURE,
-], [CapacityCols.SOH, CapacityCols.AVERAGE_TENSION])
+], [CapacityCols.SOH])
 
 train_x, train_y, test_x, test_y = mdh.get_discharge_whole_cycle(soh = False, output_capacity = False)
 
 train_y = mdh.keep_only_capacity(train_y, is_multiple_output = True)
 test_y = mdh.keep_only_capacity(test_y, is_multiple_output = True)
 
-print(train_x.shape)
+#print(train_x.shape)
+charge_x_scaler, discharge_x_scaler = mdh.get_scalers()
+print(charge_x_scaler[0].data_max_)
+print(charge_x_scaler[1].data_max_)
+print(charge_x_scaler[2].data_max_)
+print(charge_x_scaler[3].data_max_)

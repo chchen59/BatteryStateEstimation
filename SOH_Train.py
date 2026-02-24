@@ -46,25 +46,25 @@ dataset = UniboPowertoolsData(
 # Prepare the training and testing data for model data handler to load the model input and output data.
 train_data_test_names = [
     '000-DM-3.0-4019-S', 
-    #'001-DM-3.0-4019-S', 
-    #'002-DM-3.0-4019-S', 
-    #'006-EE-2.85-0820-S', 
-    #'007-EE-2.85-0820-S', 
-    #'018-DP-2.00-1320-S', 
-    #'019-DP-2.00-1320-S',
-    #'036-DP-2.00-1720-S', 
-    #'037-DP-2.00-1720-S', 
-    #'038-DP-2.00-2420-S', 
-    #'040-DM-4.00-2320-S',
-    #'042-EE-2.85-0820-S', 
-    #'045-BE-2.75-2019-S'
+    '001-DM-3.0-4019-S', 
+    '002-DM-3.0-4019-S', 
+    '006-EE-2.85-0820-S', 
+    '007-EE-2.85-0820-S', 
+    '018-DP-2.00-1320-S', 
+    '019-DP-2.00-1320-S',
+    '036-DP-2.00-1720-S', 
+    '037-DP-2.00-1720-S', 
+    '038-DP-2.00-2420-S', 
+    '040-DM-4.00-2320-S',
+    '042-EE-2.85-0820-S', 
+    '045-BE-2.75-2019-S'
 ]
 
 test_data_test_names = [
     '003-DM-3.0-4019-S',
-    #'008-EE-2.85-0820-S',
-    #'039-DP-2.00-2420-S', 
-    #'041-DM-4.00-2320-S',    
+    '008-EE-2.85-0820-S',
+    '039-DP-2.00-2420-S', 
+    '041-DM-4.00-2320-S',    
 ]
 
 dataset.prepare_data(train_data_test_names, test_data_test_names)
@@ -76,9 +76,154 @@ mdh = ModelDataHandler(dataset, [
     CycleCols.TEMPERATURE,
 ])
 
-train_x, train_y, test_x, test_y = mdh.get_discharge_whole_cycle(soh = True, output_capacity = False, multiple_output=True)
+train_x, train_y, test_x, test_y = mdh.get_charge_whole_cycle(soh = True, output_capacity = False, multiple_output=True)
 
 train_y = mdh.keep_only_capacity(train_y, is_multiple_output = True)
 test_y = mdh.keep_only_capacity(test_y, is_multiple_output = True)
 
-print(train_x)
+train_y = train_y[:, [0]]
+test_y = test_y[:, [0]]
+
+print(f"Change train_y shape to {train_y.shape}")
+print(f"Change test_y shape to {test_y.shape}")
+
+#print(train_x)
+
+# Min-Max Scaler is a popular data normalization
+# Xscaled = (X - Xmin) / (Xmax - Xmin)
+charge_x_scaler, discharge_x_scaler = mdh.get_scalers()
+print(charge_x_scaler[0].data_max_)   
+print(charge_x_scaler[0].data_min_)   
+print(charge_x_scaler[1].data_max_)
+print(charge_x_scaler[1].data_min_)   
+print(charge_x_scaler[2].data_max_)
+print(charge_x_scaler[2].data_min_)   
+
+EXPERIMENT = "cnn_soh_percentage"
+
+experiment_name = time.strftime("%Y-%m-%d-%H-%M-%S") + '_' + EXPERIMENT
+print(experiment_name)
+
+opt = tf.keras.optimizers.Adam(learning_rate=0.00003)
+
+# Model implementation
+input = keras.Input(shape=(train_x.shape[1], train_x.shape[2]))
+
+x = layers.Conv1D(64, 32, activation='relu')(input)
+x = layers.MaxPooling1D(pool_size = 2)(x)
+
+x = layers.Conv1D(64, 32, activation='relu')(x)
+x = layers.MaxPooling1D(pool_size = 2)(x)
+
+x = layers.Conv1D(64, 32, activation='relu')(x)
+x = layers.MaxPooling1D(pool_size = 2)(x)
+
+x = layers.Conv1D(64, 32, activation='relu')(x)
+x = layers.MaxPooling1D(pool_size = 2)(x)
+
+x = layers.Flatten()(x)
+x = layers.Dense(1024, activation='relu')(x)
+x = layers.Dense(256, activation='relu')(x)
+output = layers.Dense(1, activation='relu')(x)
+
+model = keras.Model(inputs=input, outputs=output)
+model.summary()
+
+# Model compile
+model.compile(optimizer=opt, loss='huber', metrics=['mse', 'mae', 'mape', tf.keras.metrics.RootMeanSquaredError(name='rmse')])
+
+# Setup early stop and check point
+es = EarlyStopping(monitor='val_loss', patience=50)
+mc = ModelCheckpoint(data_path + 'results/trained_model/%s_best.keras' % experiment_name, 
+                             save_best_only=True,
+                             monitor='val_loss')
+
+history = model.fit(train_x, train_y,
+                                epochs=30,
+                                batch_size=32,
+                                verbose=1,
+                                validation_split=0.2,
+                                callbacks = [es, mc]
+                               )
+
+model.save(data_path + 'results/trained_model/%s.keras' % experiment_name)
+
+hist_df = pd.DataFrame(history.history)
+hist_csv_file = data_path + 'results/trained_model/%s_history.csv' % experiment_name
+with open(hist_csv_file, mode='w') as f:
+    hist_df.to_csv(f)
+
+# Testing
+results = model.evaluate(test_x, test_y)
+print(results)
+
+# Visualiztion
+# train loss
+fig = go.Figure()
+fig.add_trace(go.Scatter(y=history.history['loss'],
+                    mode='lines', name='train'))
+fig.add_trace(go.Scatter(y=history.history['val_loss'],
+                    mode='lines', name='validation'))
+fig.update_layout(title='Loss trend',
+                  xaxis_title='epoch',
+                  yaxis_title='loss',
+                  width=1400,
+                  height=600)
+fig.show()
+
+# train dateset prediction result
+train_predictions = model.predict(train_x)
+cycle_num = 0
+steps_num = train_x.shape[0]
+step_index = np.arange(cycle_num*steps_num, (cycle_num+1)*steps_num)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=step_index, y=train_predictions.flatten()[cycle_num*steps_num:(cycle_num+1)*steps_num],
+                    mode='lines', name='SoH predicted'))
+fig.add_trace(go.Scatter(x=step_index, y=train_y.flatten()[cycle_num*steps_num:(cycle_num+1)*steps_num],
+                    mode='lines', name='SoH actual'))
+fig.update_layout(title='Results on training',
+                  xaxis_title='Cycle',
+                  yaxis_title='SoH percentage',
+                  width=1400,
+                  height=600)
+fig.show()
+
+# test dateset prediction result
+test_predictions = model.predict(test_x)
+cycle_num = 0
+steps_num = test_x.shape[0]
+step_index = np.arange(cycle_num*steps_num, (cycle_num+1)*steps_num)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=step_index, y=test_predictions.flatten()[cycle_num*steps_num:(cycle_num+1)*steps_num],
+                    mode='lines', name='SoH predicted'))
+fig.add_trace(go.Scatter(x=step_index, y=test_y.flatten()[cycle_num*steps_num:(cycle_num+1)*steps_num],
+                    mode='lines', name='SoH actual'))
+fig.update_layout(title='Results on testing',
+                  xaxis_title='Cycle',
+                  yaxis_title='SoH percentage',
+                  width=1400,
+                  height=600)
+fig.show()
+
+# Load best model
+loaded_model = keras.models.load_model(data_path + 'results/trained_model/%s.keras' % experiment_name)
+
+# Convert to INT8 tflite model.
+def representative_dataset():
+    for input_value in tf.data.Dataset.from_tensor_slices((test_x)).batch(1).take(1000):
+        yield [input_value]
+
+converter = tf.lite.TFLiteConverter.from_keras_model(loaded_model)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+converter.representative_dataset = representative_dataset
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+converter.inference_input_type = tf.int8  # or tf.uint8
+converter.inference_output_type = tf.int8  # or tf.uint8
+tflite_quant_model = converter.convert()
+
+# Save the model.
+with open('results/trained_model/BMS_SOH_INT8.tflite', 'wb') as f:
+  f.write(tflite_quant_model)
+
