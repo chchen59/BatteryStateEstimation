@@ -212,7 +212,7 @@ loaded_model = keras.models.load_model(data_path + 'results/trained_model/%s.ker
 
 # Convert to INT8 tflite model.
 def representative_dataset():
-    for input_value in tf.data.Dataset.from_tensor_slices((test_x)).batch(1).take(1000):
+    for input_value in tf.data.Dataset.from_tensor_slices((train_x)).batch(1).take(1000):
         yield [input_value]
 
 converter = tf.lite.TFLiteConverter.from_keras_model(loaded_model)
