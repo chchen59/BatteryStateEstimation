@@ -147,7 +147,7 @@ mc = ModelCheckpoint(data_path + 'results/trained_model/%s_best.keras' % experim
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001) # 停滯 5 個 epoch 就把學習率砍半
 
 history = model.fit(train_x_seq, train_y_seq,
-                                epochs=5,
+                                epochs=20,
                                 batch_size=128,
                                 verbose=1,
                                 validation_split=0.2,
