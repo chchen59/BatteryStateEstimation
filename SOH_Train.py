@@ -153,8 +153,11 @@ hist_csv_file = data_path + 'results/trained_model/%s_history.csv' % experiment_
 with open(hist_csv_file, mode='w') as f:
     hist_df.to_csv(f)
 
+# Load best model
+loaded_model = keras.models.load_model(data_path + 'results/trained_model/%s_best.keras' % experiment_name)
+
 # Testing
-results = model.evaluate(test_x, test_y)
+results = loaded_model.evaluate(test_x, test_y)
 print(results)
 
 # Visualiztion
@@ -172,7 +175,7 @@ fig.update_layout(title='Loss trend',
 fig.show()
 
 # train dateset prediction result
-train_predictions = model.predict(train_x)
+train_predictions = loaded_model.predict(train_x)
 cycle_num = 0
 steps_num = train_x.shape[0]
 step_index = np.arange(cycle_num*steps_num, (cycle_num+1)*steps_num)
@@ -190,7 +193,7 @@ fig.update_layout(title='Results on training',
 fig.show()
 
 # test dateset prediction result
-test_predictions = model.predict(test_x)
+test_predictions = loaded_model.predict(test_x)
 cycle_num = 0
 steps_num = test_x.shape[0]
 step_index = np.arange(cycle_num*steps_num, (cycle_num+1)*steps_num)
@@ -206,9 +209,6 @@ fig.update_layout(title='Results on testing',
                   width=1400,
                   height=600)
 fig.show()
-
-# Load best model
-loaded_model = keras.models.load_model(data_path + 'results/trained_model/%s.keras' % experiment_name)
 
 # Convert to INT8 tflite model.
 def representative_dataset():
@@ -227,3 +227,46 @@ tflite_quant_model = converter.convert()
 with open('results/trained_model/BMS_SOH_INT8.tflite', 'wb') as f:
   f.write(tflite_quant_model)
 
+def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
+    """
+    將 NumPy 陣列轉換並寫入 C Header 檔案中。
+    """
+    print(f"正在匯出資料至 {filename} ...")
+    
+    with open(filename, 'w') as f:
+        f.write("#ifndef TEST_DATA_H\n")
+        f.write("#define TEST_DATA_H\n\n")
+
+        def write_array_to_c(arr, array_name):
+            flat_arr = arr.flatten()
+            length = len(flat_arr)
+            
+            # 寫入陣列維度資訊當作註解，方便 C 語言開發時參考
+            f.write(f"// Original array shape: {arr.shape}\n")
+            f.write(f"const int {array_name}_dim[] = {{{', '.join(map(str, arr.shape))}}};\n")
+            f.write(f"const int {array_name}_length = {length};\n\n")
+            
+            # 宣告 C 陣列 (這裡以 float 為例)
+            f.write(f"const float {array_name}[{length}] = {{\n")
+            
+            # 將數值分批寫入，避免單行過長導致編譯器報錯 (每行 10 個數值)
+            for i in range(0, length, 10):
+                chunk = flat_arr[i:i+10]
+                chunk_str = ", ".join([f"{val:.6f}" for val in chunk])
+                if i + 10 < length:
+                    f.write(f"    {chunk_str},\n")
+                else:
+                    f.write(f"    {chunk_str}\n")
+            f.write("};\n\n")
+
+        # 寫入 X 與 Y 資料
+        write_array_to_c(x_array, "test_x")
+        write_array_to_c(y_array, "test_y")
+
+        f.write("#endif // TEST_DATA_H\n")
+    
+    print("匯出完成！")
+
+# Export test_x and test_y data to C header file for later use in C language development.
+export_filepath = data_path + 'results/trained_model/SOH_test_data.h'
+export_numpy_to_c_header(test_x, test_y, filename=export_filepath)
