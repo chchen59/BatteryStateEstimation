@@ -22,9 +22,13 @@ This project is a deep learning-based Battery Management System (BMS) model arch
     * Multi-layer LSTM structure (256 -> 256 -> 128 units).
     * Includes Dropout layers to prevent overfitting.
     * Uses Huber Loss as the loss function for better robustness against outliers.
+
+![SOC model](./Picture/SOC_Model.png)
 * **SOH Prediction (CNN)**:
     * Four `Conv1D` layers combined with `MaxPooling1D` to extract cycle features.
     * Fully connected layer (Dense) for the final regression prediction.
+
+![SOH model](./Picture/SOH_Model.png)
 
 ## How to Use
 
