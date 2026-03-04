@@ -53,10 +53,10 @@ python SOC_Train.py
 ## Result
 ### SOH 
 MAE (Mean Absolute Error): 0.0107  
-![SOH](./picture/SOH_Test_MAE_0_0107.png)
+![SOH](./Picture/SOH_Test_MAE_0_0107.png)
 ### SOC
 MAE: 0.0369  
-![SOC](./picture/SOC_Test_MAE_0_0369.png)
+![SOC](./Picture/SOC_Test_MAE_0_0369.png)
 
 
 ## Reference Paper
