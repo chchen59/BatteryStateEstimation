@@ -238,12 +238,16 @@ def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
         f.write("#define TEST_DATA_H\n\n")
 
         def write_array_to_c(arr, array_name):
-            flat_arr = arr.flatten()
+            #slice_size = len(arr)  # 根據實際需要調整切片大小
+            slice_size = 1024  # 根據實際需要調整切片大小
+            slice_arr = arr[:slice_size, ...]
+
+            flat_arr = slice_arr.flatten()
             length = len(flat_arr)
             
             # 寫入陣列維度資訊當作註解，方便 C 語言開發時參考
-            f.write(f"// Original array shape: {arr.shape}\n")
-            f.write(f"const int {array_name}_dim[] = {{{', '.join(map(str, arr.shape))}}};\n")
+            f.write(f"// Original array shape: {slice_arr.shape}\n")
+            f.write(f"const int {array_name}_dim[] = {{{', '.join(map(str, slice_arr.shape))}}};\n")
             f.write(f"const int {array_name}_length = {length};\n\n")
             
             # 宣告 C 陣列 (這裡以 float 為例)

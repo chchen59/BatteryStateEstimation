@@ -38,7 +38,7 @@ This project is a deep learning-based Battery Management System (BMS) model arch
 * Plotly (for result visualization) v6.5.2
 
 ### Dataset
-Download unibo-powertools-dataset.zip from https://data.mendeley.com/datasets/n6xg5fzsbv/1 and unzip zip file to data folder.
+Download ```unibo-powertools-dataset.zip``` from https://data.mendeley.com/datasets/n6xg5fzsbv/1 and unzip zip file to data folder.
 
 ### Execution
 Predict SOH:
@@ -50,6 +50,15 @@ Predict SOC:
 ```bash
 python SOC_Train.py
 ```
+## Result
+### SOH 
+MAE (Mean Absolute Error): 0.0107
+![SOH](picture/SOH_Test_MAE_0_0107.png)
+### SOC
+MAE: 0.0369
+![SOC](picture/SOC_Test_MAE_0_0369.png)
+
+
 ## Reference Paper
 
 *Li-Ion Batteries State-of-Charge Estimation Using Deep LSTM at Various Battery Specifications and Discharge Cycles* [[DOI](https://doi.org/10.1145/3462203.3475878)]
