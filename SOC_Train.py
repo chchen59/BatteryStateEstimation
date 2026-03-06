@@ -108,10 +108,14 @@ train_x_seq, train_y_seq = create_sequence_data(train_x_flat, train_y_flat)
 test_x_seq, test_y_seq = create_sequence_data(test_x_flat, test_y_flat)
 
 charge_x_scaler, discharge_x_scaler = mdh.get_scalers()
-print(charge_x_scaler[0].data_max_)
-print(charge_x_scaler[1].data_max_)
-print(charge_x_scaler[2].data_max_)
-print(charge_x_scaler[3].data_max_)
+print(f"discharge voltage scaler max_: {discharge_x_scaler[0].data_max_}")   
+print(f"discharge voltage scaler min_: {discharge_x_scaler[0].data_min_}")   
+print(f"discharge current scaler max_: {discharge_x_scaler[1].data_max_}")
+print(f"discharge current scaler min_: {discharge_x_scaler[1].data_min_}")   
+print(f"discharge temperature scaler max_: {discharge_x_scaler[2].data_max_}")
+print(f"discharge temperature scaler min_: {discharge_x_scaler[2].data_min_}")   
+print(f"discharge SOH scaler max_: {discharge_x_scaler[3].data_max_}")
+print(f"discharge SOH scaler min_: {discharge_x_scaler[3].data_min_}")   
 
 EXPERIMENT = "lstm_soc_percentage"
 
@@ -147,7 +151,7 @@ mc = ModelCheckpoint(data_path + 'results/trained_model/%s_best.keras' % experim
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001) # 停滯 5 個 epoch 就把學習率砍半
 
 history = model.fit(train_x_seq, train_y_seq,
-                                epochs=20,
+                                epochs=5,
                                 batch_size=128,
                                 verbose=1,
                                 validation_split=0.2,
@@ -235,7 +239,6 @@ tflite_quant_model = converter.convert()
 with open('results/trained_model/BMS_SOC_INT8.tflite', 'wb') as f:
   f.write(tflite_quant_model)
 
-
 def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
     """
     將 NumPy 陣列轉換並寫入 C Header 檔案中。
@@ -246,13 +249,20 @@ def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
         f.write("#ifndef TEST_DATA_H\n")
         f.write("#define TEST_DATA_H\n\n")
 
+        # 寫入輸入資料的 Normalize 資訊，方便 C 語言開發時參考
+        f.write(f"// Normalize scale factor(voltage, current, temperature, SOH)\n")
+        scale_max_str = f"{discharge_x_scaler[0].data_max_[0]}, {discharge_x_scaler[1].data_max_[0]}, {discharge_x_scaler[2].data_max_[0]}, {discharge_x_scaler[3].data_max_[0]}"
+        scale_min_str = f"{discharge_x_scaler[0].data_min_[0]}, {discharge_x_scaler[1].data_min_[0]}, {discharge_x_scaler[2].data_min_[0]}, {discharge_x_scaler[3].data_min_[0]}"
+        f.write(f"const float normalize_scale_max[] = {{{scale_max_str}}};\n")
+        f.write(f"const float normalize_scale_min[] = {{{scale_min_str}}};\n")
+
         def write_array_to_c(arr, array_name):
             #slice_size = len(arr)  # 根據實際需要調整切片大小
-            slice_size = 1024  # 根據實際需要調整切片大小
+            slice_size = 512  # 根據實際需要調整切片大小
             slice_arr = arr[:slice_size, ...]
             flat_arr = slice_arr.flatten()
             length = len(flat_arr)
-            
+
             # 寫入陣列維度資訊當作註解，方便 C 語言開發時參考
             f.write(f"// Original array shape: {slice_arr.shape}\n")
             f.write(f"const int {array_name}_dim[] = {{{', '.join(map(str, slice_arr.shape))}}};\n")

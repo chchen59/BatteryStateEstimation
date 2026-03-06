@@ -96,15 +96,18 @@ class ModelDataHandler():
         if(not soh):
             train_y, test_y = self.__get_padded_whole_cycle(train_y, test_y)
 
+        train_raw_x, test_raw_x = self.__get_padded_whole_cycle(
+            train_raw_x, test_raw_x)
+
         if(multiple_output and soh):
             # (SOH only) duplicate the y values to multiple steps for each cycle
             train_y = np.repeat(train_y[:, None, :], train_x.shape[1], axis=1)
             test_y = np.repeat(test_y[:, None, :], test_x.shape[1], axis=1)
 
-        self.logger.info("Train x: %s, train y: %s | Test x: %s, test y: %s" %
-                         (train_x.shape, train_y.shape, test_x.shape, test_y.shape))
+        self.logger.info("Train x: %s, train raw x: %s, train y: %s | Test x: %s, test raw x: %s, test y: %s" %
+                         (train_x.shape, train_raw_x.shape, train_y.shape, test_x.shape, test_raw_x.shape, test_y.shape))
 
-        return (train_x, train_y, test_x, test_y)
+        return (train_x, train_raw_x, train_y, test_x, test_raw_x, test_y)
 
     def get_discharge_whole_cycle(self, output_capacity=False, multiple_output=False, soh=False):
         """x: [ [[voltage, current, temperature], ...], ...] \n

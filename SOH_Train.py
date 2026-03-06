@@ -76,7 +76,7 @@ mdh = ModelDataHandler(dataset, [
     CycleCols.TEMPERATURE,
 ])
 
-train_x, train_y, test_x, test_y = mdh.get_charge_whole_cycle(soh = True, output_capacity = False, multiple_output=True)
+train_x, train_raw_x, train_y, test_x, test_raw_x, test_y = mdh.get_charge_whole_cycle(soh = True, output_capacity = False, multiple_output=True)
 
 train_y = mdh.keep_only_capacity(train_y, is_multiple_output = True)
 test_y = mdh.keep_only_capacity(test_y, is_multiple_output = True)
@@ -92,12 +92,12 @@ print(f"Change test_y shape to {test_y.shape}")
 # Min-Max Scaler is a popular data normalization
 # Xscaled = (X - Xmin) / (Xmax - Xmin)
 charge_x_scaler, discharge_x_scaler = mdh.get_scalers()
-print(charge_x_scaler[0].data_max_)   
-print(charge_x_scaler[0].data_min_)   
-print(charge_x_scaler[1].data_max_)
-print(charge_x_scaler[1].data_min_)   
-print(charge_x_scaler[2].data_max_)
-print(charge_x_scaler[2].data_min_)   
+print(f"charge voltage scaler max_: {charge_x_scaler[0].data_max_}")   
+print(f"charge voltage scaler min_: {charge_x_scaler[0].data_min_}")   
+print(f"charge current scaler max_: {charge_x_scaler[1].data_max_}")
+print(f"charge current scaler min_: {charge_x_scaler[1].data_min_}")   
+print(f"charge temperature scaler max_: {charge_x_scaler[2].data_max_}")
+print(f"charge temperature scaler min_: {charge_x_scaler[2].data_min_}")   
 
 EXPERIMENT = "cnn_soh_percentage"
 
@@ -237,14 +237,21 @@ def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
         f.write("#ifndef TEST_DATA_H\n")
         f.write("#define TEST_DATA_H\n\n")
 
+        # 寫入輸入資料的 Normalize 資訊，方便 C 語言開發時參考
+        f.write(f"// Normalize scale factor(voltage, current, temperature)\n")
+        scale_max_str = f"{charge_x_scaler[0].data_max_[0]}, {charge_x_scaler[1].data_max_[0]}, {charge_x_scaler[2].data_max_[0]}"
+        scale_min_str = f"{charge_x_scaler[0].data_min_[0]}, {charge_x_scaler[1].data_min_[0]}, {charge_x_scaler[2].data_min_[0]}"
+        f.write(f"const float normalize_scale_max[] = {{{scale_max_str}}};\n")
+        f.write(f"const float normalize_scale_min[] = {{{scale_min_str}}};\n")
+
         def write_array_to_c(arr, array_name):
-            #slice_size = len(arr)  # 根據實際需要調整切片大小
-            slice_size = 1024  # 根據實際需要調整切片大小
-            slice_arr = arr[:slice_size, ...]
+            slice_start = 0  # 根據實際需要調整切片起始位置
+            slice_size = 64  # 根據實際需要調整切片大小
+            slice_arr = arr[slice_start: slice_start + slice_size, ...]
 
             flat_arr = slice_arr.flatten()
             length = len(flat_arr)
-            
+
             # 寫入陣列維度資訊當作註解，方便 C 語言開發時參考
             f.write(f"// Original array shape: {slice_arr.shape}\n")
             f.write(f"const int {array_name}_dim[] = {{{', '.join(map(str, slice_arr.shape))}}};\n")
@@ -253,11 +260,11 @@ def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
             # 宣告 C 陣列 (這裡以 float 為例)
             f.write(f"const float {array_name}[{length}] = {{\n")
             
-            # 將數值分批寫入，避免單行過長導致編譯器報錯 (每行 10 個數值)
-            for i in range(0, length, 10):
-                chunk = flat_arr[i:i+10]
+            # 將數值分批寫入，避免單行過長導致編譯器報錯 (每行 12 個數值)
+            for i in range(0, length, 12):
+                chunk = flat_arr[i:i+12]
                 chunk_str = ", ".join([f"{val:.6f}" for val in chunk])
-                if i + 10 < length:
+                if i + 12 < length:
                     f.write(f"    {chunk_str},\n")
                 else:
                     f.write(f"    {chunk_str}\n")
@@ -273,4 +280,4 @@ def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
 
 # Export test_x and test_y data to C header file for later use in C language development.
 export_filepath = data_path + 'results/trained_model/SOH_test_data.h'
-export_numpy_to_c_header(test_x, test_y, filename=export_filepath)
+export_numpy_to_c_header(test_raw_x, test_y, filename=export_filepath)
