@@ -93,19 +93,23 @@ mdh = ModelDataHandler(dataset, [
     CycleCols.TEMPERATURE,
 ], [CapacityCols.SOH])
 
-train_x, train_y, test_x, test_y = mdh.get_discharge_whole_cycle(soh = False, output_capacity = False)
+train_x, train_raw_x, train_y, test_x, test_raw_x, test_y = mdh.get_discharge_whole_cycle(soh = False, output_capacity = False)
 
 train_y = mdh.keep_only_capacity(train_y, is_multiple_output = True)
 test_y = mdh.keep_only_capacity(test_y, is_multiple_output = True)
 
 # Flatten train/test dataset to create time sequence dataset
 train_x_flat = train_x.reshape(-1, train_x.shape[2])
+train_x_raw_flat = train_raw_x.reshape(-1, train_raw_x.shape[2])
 train_y_flat = train_y.reshape(-1, 1)
 test_x_flat = test_x.reshape(-1, test_x.shape[2])
+test_x_raw_flat = test_raw_x.reshape(-1, test_raw_x.shape[2])
 test_y_flat = test_y.reshape(-1, 1)
 
 train_x_seq, train_y_seq = create_sequence_data(train_x_flat, train_y_flat)
+train_raw_x_seq, _ = create_sequence_data(train_x_raw_flat, train_y_flat)
 test_x_seq, test_y_seq = create_sequence_data(test_x_flat, test_y_flat)
+test_raw_x_seq, _ = create_sequence_data(test_x_raw_flat, test_y_flat)
 
 charge_x_scaler, discharge_x_scaler = mdh.get_scalers()
 print(f"discharge voltage scaler max_: {discharge_x_scaler[0].data_max_}")   
@@ -257,9 +261,10 @@ def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
         f.write(f"const float normalize_scale_min[] = {{{scale_min_str}}};\n")
 
         def write_array_to_c(arr, array_name):
-            #slice_size = len(arr)  # 根據實際需要調整切片大小
-            slice_size = 512  # 根據實際需要調整切片大小
-            slice_arr = arr[:slice_size, ...]
+            slice_start = 0  # 根據實際需要調整切片起始位置
+            slice_size = 64  # 根據實際需要調整切片大小
+            slice_arr = arr[slice_start: slice_start + slice_size, ...]
+
             flat_arr = slice_arr.flatten()
             length = len(flat_arr)
 
@@ -291,4 +296,4 @@ def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
 
 # 使用 sequence 的 test_x_seq 與 test_y_seq 
 export_filepath = data_path + 'results/trained_model/SOC_test_data.h'
-export_numpy_to_c_header(test_x_seq, test_y_seq, filename=export_filepath)
+export_numpy_to_c_header(test_raw_x_seq, test_y_seq, filename=export_filepath)
