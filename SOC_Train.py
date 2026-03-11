@@ -134,10 +134,10 @@ model.add(LSTM(256,
                 return_sequences=True,
                 unroll=True,
                 input_shape=(TIME_STEPS, train_x.shape[2])))
-model.add(Dropout(0.2)) # 隨機丟棄 20% 神經元，防止過度擬合
+model.add(Dropout(0.2)) # Dropout 20% of neurons to prevent overfitting.
 
 model.add(LSTM(256, unroll=True, return_sequences=True))
-model.add(Dropout(0.2)) # 隨機丟棄 20% 神經元，防止過度擬合
+model.add(Dropout(0.2)) # Dropout 20% of neurons to prevent overfitting.
 
 model.add(LSTM(128, unroll=True, return_sequences=False))
 model.add(Dropout(0.2))
@@ -152,10 +152,10 @@ es = EarlyStopping(monitor='val_loss', patience=50)
 mc = ModelCheckpoint(data_path + 'results/trained_model/%s_best.keras' % experiment_name, 
                              save_best_only=True, 
                              monitor='val_loss')
-reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001) # 停滯 5 個 epoch 就把學習率砍半
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001) # Halve the learning rate after 5 epochs of stagnation.
 
 history = model.fit(train_x_seq, train_y_seq,
-                                epochs=5,
+                                epochs=30,
                                 batch_size=128,
                                 verbose=1,
                                 validation_split=0.2,
@@ -202,7 +202,7 @@ fig.add_trace(go.Scatter(x=step_index, y=train_predictions.flatten()[cycle_num*s
 fig.add_trace(go.Scatter(x=step_index, y=train_y_seq.flatten()[cycle_num*steps_num:(cycle_num+1)*steps_num],
                     mode='lines', name='SoC actual'))
 fig.update_layout(title='Results on training',
-                  xaxis_title='Cycle',
+                  xaxis_title='Sample',
                   yaxis_title='SoC percentage',
                   width=1400,
                   height=600)
@@ -220,7 +220,7 @@ fig.add_trace(go.Scatter(x=step_index, y=test_predictions.flatten()[cycle_num*st
 fig.add_trace(go.Scatter(x=step_index, y=test_y_seq.flatten()[cycle_num*steps_num:(cycle_num+1)*steps_num],
                     mode='lines', name='SoC actual'))
 fig.update_layout(title='Results on testing',
-                  xaxis_title='Cycle',
+                  xaxis_title='Sample',
                   yaxis_title='SoC percentage',
                   width=1400,
                   height=600)
@@ -245,15 +245,15 @@ with open('results/trained_model/BMS_SOC_INT8.tflite', 'wb') as f:
 
 def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
     """
-    將 NumPy 陣列轉換並寫入 C Header 檔案中。
+    Convert the NumPy array and write it to the C Header file.
     """
-    print(f"正在匯出資料至 {filename} ...")
+    print(f"Data is being exported to {filename} ...")
     
     with open(filename, 'w') as f:
         f.write("#ifndef TEST_DATA_H\n")
         f.write("#define TEST_DATA_H\n\n")
 
-        # 寫入輸入資料的 Normalize 資訊，方便 C 語言開發時參考
+        # Write the Normalize information of the input data for easy reference during C language development.
         f.write(f"// Normalize scale factor(voltage, current, temperature, SOH)\n")
         scale_max_str = f"{discharge_x_scaler[0].data_max_[0]}, {discharge_x_scaler[1].data_max_[0]}, {discharge_x_scaler[2].data_max_[0]}, {discharge_x_scaler[3].data_max_[0]}"
         scale_min_str = f"{discharge_x_scaler[0].data_min_[0]}, {discharge_x_scaler[1].data_min_[0]}, {discharge_x_scaler[2].data_min_[0]}, {discharge_x_scaler[3].data_min_[0]}"
@@ -261,22 +261,22 @@ def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
         f.write(f"const float normalize_scale_min[] = {{{scale_min_str}}};\n")
 
         def write_array_to_c(arr, array_name):
-            slice_start = 0  # 根據實際需要調整切片起始位置
-            slice_size = 64  # 根據實際需要調整切片大小
+            slice_start = 0  # Adjust the starting position of the slice according to actual needs.
+            slice_size = 64  # Adjust the slice size according to actual needs.
             slice_arr = arr[slice_start: slice_start + slice_size, ...]
 
             flat_arr = slice_arr.flatten()
             length = len(flat_arr)
 
-            # 寫入陣列維度資訊當作註解，方便 C 語言開發時參考
+            # Write the array dimensions for easy reference during C language development
             f.write(f"// Original array shape: {slice_arr.shape}\n")
             f.write(f"const int {array_name}_dim[] = {{{', '.join(map(str, slice_arr.shape))}}};\n")
             f.write(f"const int {array_name}_length = {length};\n\n")
             
-            # 宣告 C 陣列 (這裡以 float 為例)
+            # Declare the C array (using float as an example)
             f.write(f"const float {array_name}[{length}] = {{\n")
             
-            # 將數值分批寫入，避免單行過長導致編譯器報錯 (每行 32 個數值)
+            # Write the values ​​in batches to avoid compiler errors caused by single lines being too long (32 values ​​per line).
             for i in range(0, length, 32):
                 chunk = flat_arr[i:i+32]
                 chunk_str = ", ".join([f"{val:.6f}" for val in chunk])
@@ -286,14 +286,14 @@ def export_numpy_to_c_header(x_array, y_array, filename="test_data.h"):
                     f.write(f"    {chunk_str}\n")
             f.write("};\n\n")
 
-        # 寫入 X 與 Y 資料
+        # Write the X and Y data
         write_array_to_c(x_array, "test_x_seq")
         write_array_to_c(y_array, "test_y_seq")
 
         f.write("#endif // TEST_DATA_H\n")
     
-    print("匯出完成！")
+    print("Export completed!")
 
-# 使用 sequence 的 test_x_seq 與 test_y_seq 
+# Export test_raw_x_seq and test_y_seq data to C header file for later use in C language development.
 export_filepath = data_path + 'results/trained_model/SOC_test_data.h'
 export_numpy_to_c_header(test_raw_x_seq, test_y_seq, filename=export_filepath)
